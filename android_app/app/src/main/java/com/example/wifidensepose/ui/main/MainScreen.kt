@@ -3,23 +3,14 @@ package com.example.wifidensepose.ui.main
 import android.app.Application
 import android.hardware.usb.UsbDevice
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
-import androidx.compose.material3.Divider
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -36,53 +27,101 @@ fun MainScreen(
 ) {
     val availableDevices by viewModel.availableDevices.collectAsStateWithLifecycle()
     val connectionStatus by viewModel.connectionStatus.collectAsStateWithLifecycle()
-    val serialData by viewModel.serialData.collectAsStateWithLifecycle()
+    val espStatus by viewModel.espStatus.collectAsStateWithLifecycle()
+    val scanResults by viewModel.scanResults.collectAsStateWithLifecycle()
 
     Column(modifier = modifier.fillMaxSize().padding(16.dp)) {
-        Text("ESP32 USB Connection", style = MaterialTheme.typography.headlineMedium)
+        Text("ESP32 Connection", style = MaterialTheme.typography.headlineMedium)
         
-        Button(
-            onClick = { viewModel.usbManager.scanDevices() },
-            modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
-        ) {
-            Text("Scan USB Devices")
-        }
-
-        Text("Available Devices:", style = MaterialTheme.typography.titleMedium)
-        LazyColumn(modifier = Modifier.weight(0.3f)) {
-            items(availableDevices) { device ->
-                UsbDeviceItem(
-                    device = device,
-                    onClick = { viewModel.usbManager.requestPermissionAndConnect(device) }
-                )
+        Row(modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)) {
+            Button(onClick = { viewModel.usbManager.scanDevices() }) {
+                Text("Scan USB Devices")
+            }
+            Spacer(Modifier.width(8.dp))
+            if (connectionStatus is ConnectionStatus.Connected) {
+                Button(onClick = { viewModel.usbManager.disconnect() }) {
+                    Text("Disconnect")
+                }
             }
         }
-        
-        Divider(modifier = Modifier.padding(vertical = 8.dp))
 
-        Text("Status: ${connectionStatus.toText()}", style = MaterialTheme.typography.titleMedium)
-        
-        if (connectionStatus is ConnectionStatus.Connected) {
-            Button(
-                onClick = { viewModel.usbManager.disconnect() },
-                modifier = Modifier.padding(top = 8.dp)
-            ) {
-                Text("Disconnect")
+        if (connectionStatus !is ConnectionStatus.Connected) {
+            Text("Available Devices:", style = MaterialTheme.typography.titleMedium)
+            LazyColumn(modifier = Modifier.weight(1f)) {
+                items(availableDevices) { device ->
+                    UsbDeviceItem(
+                        device = device,
+                        onClick = { viewModel.usbManager.requestPermissionAndConnect(device) }
+                    )
+                }
+            }
+        } else {
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            Text("ESP32 Wi-Fi Status", style = MaterialTheme.typography.titleMedium)
+            
+            when (val status = espStatus) {
+                is EspStatus.Connected -> {
+                    Text("Connected to Wi-Fi. IP: ${status.ip}", color = MaterialTheme.colorScheme.primary)
+                }
+                is EspStatus.Connecting -> {
+                    Text("Connecting to ${status.ssid}...")
+                }
+                else -> {
+                    if (status is EspStatus.Failed) {
+                        Text("Connection Failed", color = MaterialTheme.colorScheme.error)
+                    } else if (status is EspStatus.ReadyForConfig) {
+                        Text("Ready for config")
+                    }
+                    WifiConfigurator { ssid, pass ->
+                        viewModel.sendWifiConfig(ssid, pass)
+                    }
+                }
+            }
+            
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            Text("Discovered Devices (${scanResults.devices.size})", style = MaterialTheme.typography.titleMedium)
+            LazyColumn(modifier = Modifier.weight(1f)) {
+                items(scanResults.devices) { d ->
+                    Text("MAC: ${d.mac} | RSSI: ${d.rssi} | BSSID: ${d.bssid}", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+            
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            Text("Discovered Routers (${scanResults.routers.size})", style = MaterialTheme.typography.titleMedium)
+            LazyColumn(modifier = Modifier.weight(1f)) {
+                items(scanResults.routers) { r ->
+                    Text("BSSID: ${r.bssid} | RSSI: ${r.rssi}", style = MaterialTheme.typography.bodySmall)
+                }
             }
         }
-        
-        Divider(modifier = Modifier.padding(vertical = 8.dp))
+    }
+}
 
-        Text("Serial Data:", style = MaterialTheme.typography.titleMedium)
-        val scrollState = rememberScrollState()
-        Text(
-            text = serialData,
-            modifier = Modifier
-                .weight(0.7f)
-                .fillMaxWidth()
-                .verticalScroll(scrollState)
-                .padding(8.dp)
+@Composable
+fun WifiConfigurator(onSend: (String, String) -> Unit) {
+    var ssid by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+
+    Column(modifier = Modifier.padding(vertical = 8.dp)) {
+        OutlinedTextField(
+            value = ssid,
+            onValueChange = { ssid = it },
+            label = { Text("SSID") },
+            modifier = Modifier.fillMaxWidth()
         )
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("Password") },
+            visualTransformation = PasswordVisualTransformation(),
+            modifier = Modifier.fillMaxWidth()
+        )
+        Button(
+            onClick = { onSend(ssid, password) },
+            modifier = Modifier.padding(top = 8.dp).fillMaxWidth()
+        ) {
+            Text("Send Config")
+        }
     }
 }
 
@@ -99,11 +138,4 @@ fun UsbDeviceItem(device: UsbDevice, onClick: () -> Unit) {
             Text("VID: ${device.vendorId} PID: ${device.productId}", style = MaterialTheme.typography.bodySmall)
         }
     }
-}
-
-private fun ConnectionStatus.toText(): String = when (this) {
-    ConnectionStatus.Connecting -> "Connecting..."
-    is ConnectionStatus.Connected -> "Connected to ${device.productName ?: "Device"}"
-    ConnectionStatus.Disconnected -> "Disconnected"
-    is ConnectionStatus.Error -> "Error: $message"
 }

@@ -32,6 +32,8 @@ class UsbSerialManager(private val context: Context) {
     private var serialPort: UsbSerialPort? = null
     private var ioManager: SerialInputOutputManager? = null
 
+    private val buffer = java.lang.StringBuilder()
+
     companion object {
         private const val ACTION_USB_PERMISSION = "com.example.wifidensepose.USB_PERMISSION"
     }
@@ -124,7 +126,16 @@ class UsbSerialManager(private val context: Context) {
             ioManager = SerialInputOutputManager(port, object : SerialInputOutputManager.Listener {
                 override fun onNewData(data: ByteArray) {
                     val text = String(data, Charsets.UTF_8)
-                    _serialData.value = text
+                    buffer.append(text)
+                    var index = buffer.indexOf('\n')
+                    while (index != -1) {
+                        val line = buffer.substring(0, index).trim()
+                        if (line.isNotEmpty()) {
+                            _serialData.value = line
+                        }
+                        buffer.delete(0, index + 1)
+                        index = buffer.indexOf('\n')
+                    }
                 }
                 override fun onRunError(e: Exception) {
                     _connectionStatus.value = ConnectionStatus.Error(e.message ?: "Unknown error")
@@ -149,6 +160,17 @@ class UsbSerialManager(private val context: Context) {
             // Ignore
         }
         serialPort = null
+        buffer.clear()
+    }
+
+    fun write(data: String) {
+        val port = serialPort ?: return
+        try {
+            val bytes = data.toByteArray(Charsets.UTF_8)
+            port.write(bytes, 2000)
+        } catch (e: Exception) {
+            _connectionStatus.value = ConnectionStatus.Error("Write failed: ${e.message}")
+        }
     }
 
     fun cleanup() {
