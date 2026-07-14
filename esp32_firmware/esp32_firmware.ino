@@ -6,6 +6,7 @@
 String currentSSID = "";
 String currentPassword = "";
 bool isConfigured = false;
+#define LED_PIN 2
 
 // Structures to hold discovered devices
 struct DiscoveredDevice {
@@ -83,7 +84,9 @@ void promiscuous_rx_cb(void *buf, wifi_promiscuous_pkt_type_t type) {
 }
 
 void setup() {
-  Serial.begin(115200);
+  pinMode(LED_PIN, OUTPUT);
+  digitalWrite(LED_PIN, HIGH); // Stay constant when board is powered/connected
+  Serial.begin(921600);
   while (!Serial) { ; }
   
   Serial.println("{\"status\": \"ready_for_config\"}");
@@ -110,7 +113,7 @@ void loop() {
   
   if (isConfigured) {
     static unsigned long lastSend = 0;
-    if (millis() - lastSend > 2000) {
+    if (millis() - lastSend > 200) { // Communicate fast
       sendDataToAndroid();
       lastSend = millis();
     }

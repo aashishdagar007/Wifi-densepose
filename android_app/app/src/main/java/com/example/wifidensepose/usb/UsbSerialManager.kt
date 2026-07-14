@@ -120,7 +120,7 @@ class UsbSerialManager(private val context: Context) {
 
         try {
             port.open(connection)
-            port.setParameters(115200, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
+            port.setParameters(921600, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
             serialPort = port
             
             ioManager = SerialInputOutputManager(port, object : SerialInputOutputManager.Listener {
