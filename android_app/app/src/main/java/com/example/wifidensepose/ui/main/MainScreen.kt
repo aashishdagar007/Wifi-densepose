@@ -16,6 +16,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation3.runtime.NavKey
 import com.example.wifidensepose.usb.ConnectionStatus
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.pow
 
 @Composable
 fun MainScreen(
@@ -79,10 +86,15 @@ fun MainScreen(
             }
             
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+            Text("Radar Map View", style = MaterialTheme.typography.titleMedium)
+            RadarMap(devices = scanResults.devices, modifier = Modifier.padding(vertical = 8.dp))
+
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
             Text("Discovered Devices (${scanResults.devices.size})", style = MaterialTheme.typography.titleMedium)
             LazyColumn(modifier = Modifier.weight(1f)) {
                 items(scanResults.devices) { d ->
-                    Text("MAC: ${d.mac} | RSSI: ${d.rssi} | BSSID: ${d.bssid}", style = MaterialTheme.typography.bodySmall)
+                    val distance = 10.0.pow((-50.0 - d.rssi) / 20.0)
+                    Text("MAC: ${d.mac} | RSSI: ${d.rssi} | Dist: %.2fm".format(distance), style = MaterialTheme.typography.bodySmall)
                 }
             }
             
@@ -90,7 +102,8 @@ fun MainScreen(
             Text("Discovered Routers (${scanResults.routers.size})", style = MaterialTheme.typography.titleMedium)
             LazyColumn(modifier = Modifier.weight(1f)) {
                 items(scanResults.routers) { r ->
-                    Text("BSSID: ${r.bssid} | RSSI: ${r.rssi}", style = MaterialTheme.typography.bodySmall)
+                    val distance = 10.0.pow((-50.0 - r.rssi) / 20.0)
+                    Text("BSSID: ${r.bssid} | RSSI: ${r.rssi} | Dist: %.2fm".format(distance), style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
@@ -136,6 +149,58 @@ fun UsbDeviceItem(device: UsbDevice, onClick: () -> Unit) {
         Column {
             Text(device.productName ?: "Unknown Device", style = MaterialTheme.typography.bodyLarge)
             Text("VID: ${device.vendorId} PID: ${device.productId}", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+@Composable
+fun RadarMap(devices: List<DiscoveredDevice>, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier.fillMaxWidth().height(250.dp)) {
+        val center = Offset(size.width / 2, size.height / 2)
+        val maxRadius = minOf(size.width, size.height) / 2f
+        
+        // Draw radar circles
+        for (i in 1..4) {
+            drawCircle(
+                color = Color.Green.copy(alpha = 0.3f),
+                radius = maxRadius * (i / 4f),
+                center = center,
+                style = Stroke(width = 1.dp.toPx())
+            )
+        }
+        
+        // Draw crosshairs
+        drawLine(
+            color = Color.Green.copy(alpha = 0.3f),
+            start = Offset(center.x, 0f),
+            end = Offset(center.x, size.height),
+            strokeWidth = 1.dp.toPx()
+        )
+        drawLine(
+            color = Color.Green.copy(alpha = 0.3f),
+            start = Offset(0f, center.y),
+            end = Offset(size.width, center.y),
+            strokeWidth = 1.dp.toPx()
+        )
+        
+        // Draw devices
+        devices.forEach { device ->
+            val distance = 10.0.pow((-50.0 - device.rssi) / 20.0)
+            // Cap distance for visualization to 20 meters
+            val normalizedDistance = (distance / 20.0).coerceIn(0.0, 1.0)
+            val radius = maxRadius * normalizedDistance.toFloat()
+            
+            // Generate a deterministic angle based on MAC address hash
+            val angle = (device.mac.hashCode() % 360) * (Math.PI / 180.0)
+            
+            val x = center.x + (radius * cos(angle)).toFloat()
+            val y = center.y + (radius * sin(angle)).toFloat()
+            
+            drawCircle(
+                color = Color.Red,
+                radius = 6.dp.toPx(),
+                center = Offset(x, y)
+            )
         }
     }
 }

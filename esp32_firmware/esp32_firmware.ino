@@ -121,6 +121,9 @@ void loop() {
 }
 
 void connectToWiFi() {
+  WiFi.disconnect(true);
+  delay(100);
+  
   Serial.println("{\"status\": \"connecting\", \"ssid\": \"" + currentSSID + "\"}");
   WiFi.begin(currentSSID.c_str(), currentPassword.c_str());
   
